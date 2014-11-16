@@ -27,6 +27,7 @@
 //#include "CalibCode/FillEpsilonPlot/interface/JSON.h"
 
 #define NPI0MAX 30000
+#define NL1SEED 128
 //#define SELECTION_TREE
 //#define NEW_CONTCORR
 #define MVA_REGRESSIO
@@ -86,12 +87,11 @@ class FillEpsilonPlot : public edm::EDAnalyzer {
       double min( double a, double b);
 
       TH1F** initializeEpsilonHistograms(const char *name, const char *title, int size );
-      void  deleteEpsilonPlot(TH1F **h, int size);
-      void  writeEpsilonPlot(TH1F **h, const char *folder, int size);
+      void deleteEpsilonPlot(TH1F **h, int size);
+      void writeEpsilonPlot(TH1F **h, const char *folder, int size);
       bool getTriggerResult(const edm::Event& iEvent, const edm::EventSetup& iSetup);
       bool getTriggerByName( std::string s );
       bool GetHLTResults(const edm::Event& iEvent, std::string s);
-      //bool CheckL1Seed(const edm::Event& iEvent, std::string s);
 
       float EBPHI_Cont_Corr(float PT, int giPhi, int ieta);
       void  EBPHI_Cont_Corr_load(std::string FileName );
@@ -111,6 +111,7 @@ class FillEpsilonPlot : public edm::EDAnalyzer {
 
       const EcalPreshowerGeometry *esGeometry_;     
       const CaloGeometry* geometry;
+      bool GeometryFromFile_;
 
       std::string outfilename_;
       std::string externalGeometry_;
@@ -133,9 +134,11 @@ class FillEpsilonPlot : public edm::EDAnalyzer {
       bool HLTResults_;
       bool RemoveDead_Flag_;
       TString RemoveDead_Map_;
+      TString L1_Bit_Sele_;
+      float L1BitCollection_[NL1SEED];
 
-      //std::string L1Seed_;
       bool Are_pi0_;
+      bool L1TriggerInfo_;
       edm::InputTag EBRecHitCollectionTag_;
       edm::InputTag EERecHitCollectionTag_;
       edm::InputTag ESRecHitCollectionTag_;
@@ -248,6 +251,7 @@ class FillEpsilonPlot : public edm::EDAnalyzer {
 #endif
       TTree*  Tree_Optim;
       Int_t   nPi0;
+      Int_t   Op_L1Seed[NL1SEED];
       Int_t   Op_NPi0_rec;
       Int_t   Op_Pi0recIsEB[NPI0MAX];
       Float_t Op_IsoPi0_rec[NPI0MAX];
@@ -266,7 +270,6 @@ class FillEpsilonPlot : public edm::EDAnalyzer {
       Float_t Op_Es_e2_2[NPI0MAX];
       Float_t Op_S4S9_1[NPI0MAX];
       Float_t Op_S4S9_2[NPI0MAX];
-
       Float_t Op_ptG1_nocor[NPI0MAX];
       Float_t Op_ptG2_nocor[NPI0MAX];
       Float_t Op_ptPi0_nocor[NPI0MAX];
@@ -279,7 +282,6 @@ class FillEpsilonPlot : public edm::EDAnalyzer {
       TH1F *triggerComposition;
       bool areLabelsSet_;
 
-      std::vector<std::string> alcaL1TrigNames_;
       std::map< std::string, int > l1TrigNames_;
       bool l1TrigBit_[128];
       vector<float> vs4s9;
