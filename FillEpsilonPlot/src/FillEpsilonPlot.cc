@@ -79,6 +79,7 @@ Implementation:
 #include <FWCore/Common/interface/TriggerNames.h>
 #include <DataFormats/Common/interface/TriggerResults.h>
 //#define DEBUG
+//#define DEBUG_SEL
 
 using std::cout;
 using std::endl;
@@ -120,7 +121,7 @@ FillEpsilonPlot::FillEpsilonPlot(const edm::ParameterSet& iConfig)
     //L1Seed_                            = iConfig.getUntrackedParameter<std::string>("L1Seed");
     Are_pi0_                           = iConfig.getUntrackedParameter<bool>("Are_pi0",true);
     l1TriggerTag_                      = iConfig.getUntrackedParameter<edm::InputTag>("L1TriggerTag");
-    triggerTag_                        = iConfig.getUntrackedParameter<edm::InputTag>("triggerTag",edm::InputTag("TriggerResults"));
+    triggerTag_                        = iConfig.getUntrackedParameter<edm::InputTag>("triggerTag",edm::InputTag("TriggerResults","","TEST"));
     l1InputTag_                        = iConfig.getUntrackedParameter<edm::InputTag>("l1InputTag",edm::InputTag("hltGtDigis"));
     outfilename_                       = iConfig.getUntrackedParameter<std::string>("OutputFile");
     ebContainmentCorrections_          = iConfig.getUntrackedParameter<std::string>("EBContainmentCorrections");
@@ -278,7 +279,7 @@ FillEpsilonPlot::FillEpsilonPlot(const edm::ParameterSet& iConfig)
     pi0MassVsETEB->GetYaxis()->SetTitle("#pi^{0} mass");
 
     //DeadXtal from Map
-    if( RemoveDead_Map_!="" ){
+    if( RemoveDead_Map_!="" && RemoveDead_Flag_){
       DeadMap         = TFile::Open( RemoveDead_Map_.Data() );
       EBMap_DeadXtal  = (TH2F*) DeadMap->Get("rms_EB");
       EEmMap_DeadXtal = (TH2F*) DeadMap->Get("rms_EEm");
@@ -444,9 +445,25 @@ FillEpsilonPlot::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup
   if(SystOrNot_==1. && int(iEvent.id().event())%2!=0 ) return;
   else if(SystOrNot_==2. && int(iEvent.id().event())%2==0 ) return;
 
-  iEvent.getByLabel ( EBRecHitCollectionTag_, ebHandle);
-  iEvent.getByLabel ( EERecHitCollectionTag_, eeHandle);
-  iEvent.getByLabel ( ESRecHitCollectionTag_, esHandle);
+#ifdef DEBUG
+  cout << "\n --------------- [DEBUG] Getting Collection Tags ------------------"<< endl;
+#endif
+
+  try {  iEvent.getByLabel ( EBRecHitCollectionTag_, ebHandle);} 
+  catch( cms::Exception& exeb ) { std::cout << "EB HANDLE DOES NOT EXIST" << std::endl;}
+  try {  iEvent.getByLabel ( EERecHitCollectionTag_, eeHandle);} 
+  catch( cms::Exception& exee ) { std::cout << "EE HANDLE DOES NOT EXIST" << std::endl;}
+  try {  iEvent.getByLabel ( ESRecHitCollectionTag_, esHandle);} 
+  catch( cms::Exception& exes ) { std::cout << "ES HANDLE DOES NOT EXIST" << std::endl;}
+
+  // iEvent.getByLabel ( EBRecHitCollectionTag_, ebHandle);
+  // iEvent.getByLabel ( EERecHitCollectionTag_, eeHandle);
+  // iEvent.getByLabel ( ESRecHitCollectionTag_, esHandle);
+
+#ifdef DEBUG
+  cout << "\n --------------- [DEBUG] Getting Preshower Geometry ------------------"<< endl;
+#endif
+
   //ES
   edm::ESHandle<CaloGeometry> geoHandle;
   iSetup.get<CaloGeometryRecord>().get(geoHandle);
@@ -460,6 +477,12 @@ FillEpsilonPlot::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup
   //JSON FILE
   //if ( !myjson->isGoodLS( iEvent.id().run() , iEvent.luminosityBlock() ) ) return;
   //Vectors
+
+#ifdef DEBUG
+  cout << "\n --------------- [DEBUG] Build Cluster Collections ------------------"<< endl;
+#endif
+
+
   std::vector< CaloCluster > ebclusters;
   ebclusters.clear();
   vs4s9.clear(); vs2s9.clear(); vs2s9.clear();
@@ -472,12 +495,18 @@ FillEpsilonPlot::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup
   Ncristal_EB.clear(); Ncristal_EE.clear();
 
   bool EB_HLT=true, EE_HLT=true;
+
+
   if( HLTResults_ ){
-    EB_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EBonly.*");
-    EE_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EEonly.*");
+#ifdef DEBUG
+    cout << "\n --------------- [DEBUG] Getting HLT Results ------------------"<< endl;
+#endif
+
+    EB_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EBonly*");
+    EE_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EEonly*");
     if(Are_pi0_){
-	EB_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EBonly.*");
-	EE_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EEonly.*");
+	EB_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EBonly_*");
+	EE_HLT = GetHLTResults(iEvent, "AlCa_EcalPi0EEonly_*");
     }
     else{
 	EB_HLT = GetHLTResults(iEvent, "AlCa_EcalEtaEBonly_*");
@@ -491,9 +520,27 @@ FillEpsilonPlot::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup
   iSetup.get<EcalChannelStatusRcd>().get(csHandle);
   const EcalChannelStatus &channelStatus = *csHandle; 
 
+
+#ifdef DEBUG
+    cout << "\n --------------- [DEBUG] Filling Clusters ------------------"<< endl;
+    cout << "[DEBUG] EB_HLT = " << EB_HLT << endl;
+    cout << "[DEBUG] EE_HLT = " << EE_HLT << endl;
+    cout << "\n --------------- [DEBUG] EB Clusters  ------------------"<< endl;
+#endif
+
   EventFlow_EB->Fill(0.); EventFlow_EE->Fill(0.);
   if( (Barrel_orEndcap_=="ONLY_BARREL" || Barrel_orEndcap_=="ALL_PLEASE" ) && EB_HLT ){ EventFlow_EB->Fill(1.); fillEBClusters(ebclusters, iEvent, channelStatus);}
+
+#ifdef DEBUG
+    cout << "\n --------------- [DEBUG] EE Clusters  ------------------"<< endl;
+#endif
+
   if( (Barrel_orEndcap_=="ONLY_ENDCAP" || Barrel_orEndcap_=="ALL_PLEASE" ) && EE_HLT ){ EventFlow_EE->Fill(1.); fillEEClusters(eseeclusters, eseeclusters_tot, iEvent, channelStatus);}
+
+#ifdef DEBUG
+    cout << "\n --------------- [DEBUG] Computing Epsilon ------------------"<< endl;
+#endif
+
 
   if(Barrel_orEndcap_=="ONLY_BARREL" || Barrel_orEndcap_=="ALL_PLEASE" ) computeEpsilon(ebclusters, EcalBarrel);
   if(Barrel_orEndcap_=="ONLY_ENDCAP" || Barrel_orEndcap_=="ALL_PLEASE" ) computeEpsilon(eseeclusters_tot, EcalEndcap);
@@ -504,7 +551,6 @@ FillEpsilonPlot::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup
 
 /*===============================================================*/
 void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, const edm::Event& iEvent, const EcalChannelStatus &channelStatus)
-  /*===============================================================*/
 {
 
   std::vector<EcalRecHit> ebseeds;
@@ -516,9 +562,22 @@ void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, co
 
   // sort by energy and find the seeds
   //bool founded=false;
+
+
+#ifdef DEBUG
+    cout << "\n --------------- [DEBUG] Counting Seeds ------------------"<< endl;
+#endif
+
+
   for(EBRecHitCollection::const_iterator itb= ebHandle->begin(); itb != ebHandle->end(); ++itb, ++dc) 
   {
-    if(itb->energy() > EB_Seed_E_)  ebseeds.push_back( *itb );
+    
+    if(itb->energy() > EB_Seed_E_)  {
+#ifdef DEBUG
+      cout << "[DEBUG] Seed Energy = " << itb->energy() << endl;
+#endif
+      ebseeds.push_back( *itb );
+    }
     ////Preselection
     //if(itb->energy() > 0.200-0.200*(28.3/100)) founded=true;
   }
@@ -531,10 +590,21 @@ void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, co
 
   sort(ebseeds.begin(), ebseeds.end(), ecalRecHitLess());
   int seed_c = 0;
+
+#ifdef DEBUG
+    cout << "\n --------------- [DEBUG] Building Clusters ------------------"<< endl;
+#endif
+
+
   // loop over seeds and make clusters
   for (std::vector<EcalRecHit>::iterator itseed=ebseeds.begin(); itseed!=ebseeds.end(); itseed++, seed_c++) 
   {
     EBDetId seed_id( itseed->id() );
+
+#ifdef DEBUG
+    cout << "[DEBUG] Seed Energy: " << itseed->energy() << endl;
+#endif
+
 
     // check if seed already in use. If so go to next seed
     if(isUsed.count(seed_id)!=0) continue;
@@ -610,7 +680,7 @@ void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, co
 	if( RemoveDead_Flag_){
 	  if(!checkStatusOfEcalRecHit(channelStatus, *RecHitsInWindow[j] )  ) All_rechit_good = false; 
 	}
-	if( RemoveDead_Map_!="" ){
+	if( RemoveDead_Map_!="" && RemoveDead_Flag_ ){
 	  if( isInDeadMap( true, *RecHitsInWindow[j] ) ) All_rechit_good = false;
 	}
 
@@ -620,6 +690,8 @@ void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, co
 
 	// use calibration coeff for energy and position
 	float en = RecHitsInWindow[j]->energy() * regionalCalibration_->getCalibMap()->coeff(RecHitsInWindow[j]->id());
+
+
 	int dx = diff_neta_s(seed_ieta,ieta);
 	int dy = diff_nphi_s(seed_iphi,iphi);
 #ifdef MVA_REGRESSIO
@@ -628,6 +700,11 @@ void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, co
 
 	if(abs(dx)<=1 && abs(dy)<=1) 
 	{
+
+#ifdef DEBUG
+	  cout << "[DEBUG] adding rechit energy to 3x3: " << en << "total = " << e3x3 << endl;
+#endif
+
 	  e3x3 += en;
 	  if(dx <= 0 && dy <=0){ s4s9_tmp[0] += en; }
 	  if(dx >= 0 && dy <=0){ s4s9_tmp[1] += en; }
@@ -655,7 +732,14 @@ void FillEpsilonPlot::fillEBClusters(std::vector< CaloCluster > & ebclusters, co
 
     } // loop over 3x3 rechits
 
+#ifdef DEBUG
+    cout << "[DEBUG] 3x3 energy after look.."<< e3x3 << endl;
+    cout << "[DEBUG] All rechit good? " << All_rechit_good << endl;
+#endif
+
     if(!All_rechit_good) continue;
+
+
     float e2x2 = *max_element( s4s9_tmp,s4s9_tmp+4);
     float s4s9 = e2x2/e3x3;
     math::XYZPoint clusPos( xclu/total_weight, 
@@ -843,7 +927,7 @@ void FillEpsilonPlot::fillEEClusters(std::vector< CaloCluster > & eseeclusters, 
 	if( RemoveDead_Flag_ ){
 	  if( !checkStatusOfEcalRecHit(channelStatus, *RecHitsInWindow[j] )  ) All_rechit_good = false;
 	}
-	if( RemoveDead_Map_!="" ){
+	if( RemoveDead_Map_!="" && RemoveDead_Flag_){
 	  if( isInDeadMap( false, *RecHitsInWindow[j] ) ) All_rechit_good = false;
 	}
 
@@ -854,6 +938,7 @@ void FillEpsilonPlot::fillEEClusters(std::vector< CaloCluster > & eseeclusters, 
 	float en = RecHitsInWindow[j]->energy() * regionalCalibration_->getCalibMap()->coeff(RecHitsInWindow[j]->id());
 	int dx = seed_ix-ix;
 	int dy = seed_iy-iy;
+
 #ifdef MVA_REGRESSIO_EE
 	EnergyCristals[j] = en;
 #endif
@@ -881,6 +966,7 @@ void FillEpsilonPlot::fillEEClusters(std::vector< CaloCluster > & eseeclusters, 
 	  total_weight += weight;
 	}
     } // loop over 3x3 eerechits
+
 
     if(!All_rechit_good) continue;
     float e2x2 = *max_element( s4s9_tmp,s4s9_tmp+4);
@@ -1071,7 +1157,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 {
   if(subDetId!=EcalBarrel && subDetId != EcalEndcap) 
     throw cms::Exception("FillEpsilonPlot::computeEpsilon") << "Subdetector Id not recognized\n";
-#ifdef DEBUG
+#ifdef DEBUG_SEL
   cout << "[DEBUG] Beginning cluster loop.."<< endl;
 #endif
   // loop over clusters to make Pi0
@@ -1080,7 +1166,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
   {
     size_t j=i+1;
     for(std::vector<CaloCluster>::const_iterator g2 = g1+1; g2 != clusters.end(); ++g2, ++j ) {
-#ifdef DEBUG
+#ifdef DEBUG_SEL
       cout << "\n[DEBUG] New Pair of Clusters"<< endl;
 #endif
 	if( subDetId==EcalBarrel ) EventFlow_EB->Fill(2.);
@@ -1296,9 +1382,14 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	  Pi0Info_EE->Fill();
 	}
 #endif
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] Apply kinematic selection cuts" << endl;
+	cout << "[DEBUG] ptg1 = " << g1P4_nocor.Pt() << endl;
+	cout << "[DEBUG] ptg2 = " << g2P4_nocor.Pt() << endl;
+	cout << "[DEBUG] pt_gg = " << pi0P4_nocor.Pt() << endl;
 #endif
+
+
 	if( subDetId == EcalBarrel && fabs(pi0P4.eta())<1 )                          { if( pi0P4_nocor.Pt() < pi0PtCut_low_[subDetId]) continue; }
 	if( subDetId == EcalBarrel && fabs(pi0P4.eta())>1. && fabs(pi0P4.eta())<1.5 ){ if( pi0P4_nocor.Pt() < pi0PtCut_high_[subDetId]) continue; }
 	if( subDetId == EcalEndcap && fabs(pi0P4.eta())<1.8 )                        { if( pi0P4_nocor.Pt() < pi0PtCut_low_[subDetId]) continue; }
@@ -1323,7 +1414,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	// Implementation of HLT Filter Isolation - Eta Band Isolation 
 	// implemented in HLT: CMSSW_7_1_0/src/HLTrigger/special/src/HLTEcalResonanceFilter.cc
 	// see Yong Yang's  Thesis: http://thesis.library.caltech.edu/7345/
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] Running HLT Isolation" << endl;
 #endif
 	float hlt_iso = 0;
@@ -1341,6 +1432,11 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	  if (deta > ((Are_pi0_) ? 0.05:0.1)) continue;
 	  hlt_iso += GtmpP4.Pt();
 	}
+
+#ifdef DEBUG_SEL
+	cout << "[DEBUG] HLT ISO = " << hlt_iso <<  endl;
+#endif
+
 	// the cut is taken relative to the pi0 pt
 	hlt_iso /= pi0P4_nocor.Pt();
 	//category break down of cuts
@@ -1351,7 +1447,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] N Cristal Cuts" << endl;
 #endif
 
@@ -1365,6 +1461,11 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	  if( g1->energy()>g2->energy() ){  Nxtal_EnergGamma = Ncristal_EB[i]; Nxtal_EnergGamma2 = Ncristal_EB[j]; }
 	  else                           {  Nxtal_EnergGamma = Ncristal_EB[j]; Nxtal_EnergGamma2 = Ncristal_EB[i]; }
 	}
+
+#ifdef DEBUG_SEL
+	cout << "[DEBUG] NCRI 1 = " << Nxtal_EnergGamma <<  endl;
+	cout << "[DEBUG] NCRI 2 = " << Nxtal_EnergGamma2 <<  endl;
+#endif
 
 	if( subDetId == EcalBarrel && fabs(pi0P4.eta())<1 )                          { if( Nxtal_EnergGamma < nXtal_1_cut_low_[subDetId] ) continue; }
 	if( subDetId == EcalBarrel && fabs(pi0P4.eta())>1. && fabs(pi0P4.eta())<1.5 ){ if( Nxtal_EnergGamma < nXtal_1_cut_high_[subDetId] ) continue; }
@@ -1382,7 +1483,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	}
 	if( subDetId==EcalBarrel ) EventFlow_EB->Fill(3.);
 	else                       EventFlow_EE->Fill(3.);
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] Fill Optimization Variables...?" << endl;
 #endif
 	//Fill Optimization
@@ -1415,7 +1516,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	    nPi0++;
 	  }
 	}
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] End Accessing Optmization Variables..." << endl;
 #endif
 	//Check the Conteinment correction for Barrel
@@ -1426,7 +1527,7 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 #endif
 
 	if (!MakeNtuple4optimization_) {
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	  cout << "[DEBUG] computing region weights" << endl; 
 #endif
 	  // compute region weights
@@ -1466,13 +1567,13 @@ void FillEpsilonPlot::computeEpsilon(std::vector< CaloCluster > & clusters, int 
 	    }
 	  }	  
 	} // end filling histograms with mass
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] End of Cluster Loop" << endl;
 #endif
 
     } // loop over clusters (g2)
   } // loop over clusters to make pi0 
-#ifdef DEBUG
+#ifdef DEBUG_SEL
 	cout << "[DEBUG] Filling Tree" << endl; 
 #endif
   if(MakeNtuple4optimization_){

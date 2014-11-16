@@ -281,8 +281,8 @@ else:
     print "[calib]  '-- " + submit_s
     
     # submitting calibration handler
-    submitJobs = subprocess.Popen([submit_s], stdout=subprocess.PIPE, shell=True);
-    output = (submitJobs.communicate()[0]).splitlines()
-    print "[calib]  '-- " + output[0]
+#    submitJobs = subprocess.Popen([submit_s], stdout=subprocess.PIPE, shell=True);
+#    output = (submitJobs.communicate()[0]).splitlines()
+#    print "[calib]  '-- " + output[0]
     
     #    print "usage thisPyton.py pwd njobs queue"
